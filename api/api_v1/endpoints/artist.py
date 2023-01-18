@@ -28,14 +28,14 @@ def get_artist_by_name(
 
 @router.post("/")
 def fetch_artist(
-    term: str,
+    discogs_id: str,
     db: Session = Depends(get_db)
 ) -> Any:
     """
     Retrieve artist by name.
     """
-    start_traversing(term=term, db=db)
-    return {'message': f'Fetching data for {term} artist'}
+    start_traversing(discogs_id=discogs_id, db=db)
+    return {'message': f'Fetching data for {discogs_id} artist'}
 
 
 @router.post("/manual/")

@@ -17,23 +17,23 @@ from schemas.release import ReleaseCreate
 from services.disco_fetch import DiscoConnector
 
 
+MAX_STEPS = 20
+
+
 @dataclass
 class ArtistFetcher:
-    term: str
+    discogs_id: str
     client: DiscoConnector
     db: Session
     count: int = 0
-    depth: int = 10
+    steps: int = 10
     artists: Dict = field(default_factory=dict)
     artist: ArtistCreate = None
 
-    def get_artist_from_by_discogs_id(self, discogs_id: str):
+    def get_artist_by_discogs_id(self, discogs_id: str):
         artist = artist_crud.get_by_discogs_id(self.db, discogs_id=discogs_id)
         if not artist:
-            artist_from_discogs = self.client.get_artist(discogs_id)
-            if artist_from_discogs:
-                artist = artist_crud.create_with_releases(db=self.db, artist_in=artist_from_discogs)
-                return artist
+            artist = self.client.get_artist(discogs_id)
         return artist
 
     def get_artist_by_name(self, term: str):
@@ -42,14 +42,13 @@ class ArtistFetcher:
             artist = artist[0]
         if not artist:
             artist = self.client.search_artist(term)
-            artist = artist_crud.create_with_releases(db=self.db, artist_in=artist)
         return artist
 
-    def fetch_artist(self, term: str = None, discogs_id: str = None):
-        if discogs_id:
-            return self.get_artist_from_by_discogs_id(discogs_id)
-        if term:
-            return self.get_artist_by_name(term)
+    def fetch_artist(self, discogs_id: str):
+        artist = self.get_artist_by_discogs_id(discogs_id)
+        if artist:
+            artist = artist_crud.create_with_releases(db=self.db, artist_in=artist)
+            return artist
         return None
 
     def fetch_release_artists(self, discogs_id):
@@ -79,24 +78,30 @@ class ArtistFetcher:
         artist_crud.add_artist_release(db=self.db, artist_id=artist.id, release=release)
         return artist
 
+    def add_album_to_non_db_artist(self, release, artist):
+        artist = self.get_artist_by_discogs_id(discogs_id=artist.id)
+        if artist.id is None:
+            artist_in = Artist(
+                name=artist.name,
+                discogs_id=artist.discogs_id,
+                page_url=artist.page_url,
+            )
+            artist = artist_crud.create(db=self.db, obj_in=artist_in)
+
+        self.add_release_to_artist(release, artist)
+        self.add_artist_to_check(artist)
+
     def get_release_artists(self, release):
         release_artists = self.fetch_release_artists(release.discogs_id)
-
         try:
             for artist in release_artists:
-                if artist.name != self.term and \
-                        artist.name != "Various" and \
-                        artist != self.artist:
-                    artist = self.fetch_artist(discogs_id=artist.id)
-                    self.add_release_to_artist(release, artist)
+                if artist.name not in ["Various", self.artist.name] or artist.id != self.discogs_id:
+                    self.add_album_to_non_db_artist(release, artist)
                     if release.__class__.__name__ != "Master":
                         for other_artist in release.artists:
-                            self.add_release_to_artist(release, other_artist)
-                            self.add_artist_to_check(other_artist)
+                            self.add_album_to_non_db_artist(release, other_artist)
 
-                    self.add_release_to_artist(release, artist)
-                    self.add_artist_to_check(artist)
-                if self.count >= self.depth:
+                if self.count >= self.steps:
                     break
 
             self.increase_count()
@@ -104,21 +109,21 @@ class ArtistFetcher:
             print(e)
 
     def add_artist_to_check(self, artist):
-        if artist.name not in self.artists.keys():
+        if artist.name not in self.artists.keys() and artist.name != self.artist.name:
             self.artists.update({artist.name: artist})
 
     def increase_count(self):
         self.count += 1
 
     def run(self):
-        artist = self.fetch_artist(self.term)
+        artist = self.fetch_artist(discogs_id=self.discogs_id)
         if not artist:
             return None, None
         self.artist = artist
-
+        print(f'Found {len(artist.releases)} releases for artist {artist.name}')
         for release in artist.releases:
             self.get_release_artists(release)
-            if self.count >= self.depth:
+            if self.count >= self.steps:
                 break
 
         return self.artists, self.artist
@@ -126,7 +131,7 @@ class ArtistFetcher:
 
 @dataclass
 class Traverser:
-    term: str
+    discogs_id: str
     client: DiscoConnector
     db: Session
     checked: Dict = field(default_factory=dict)
@@ -138,9 +143,11 @@ class Traverser:
     def go_traverse(self):
         self.artist_collection = set()
         self.checked = {}
-        artists, _ = self.get_artist_related(self.term)
-        self.artists_loop(artists)
-        print("Results:\n")
+        artists, _ = self.get_artist_related(self.discogs_id)
+        if artists:
+            self.artists_loop(artists)
+            print("Results:\n")
+            print(self.checked)
 
     def artists_loop(self, artists):
         artist_count = 0
@@ -148,13 +155,12 @@ class Traverser:
             temp_artists = {}
             print(f"Checking {len(artists)} artists...")
             for artist in artists:
-                print('checking', artist)
-                new_artists, new_artist = self.get_artist_related(artist)
+                new_artists, new_artist = self.get_artist_related(artists[artist].discogs_id)
                 print(f"Found new artists: {new_artists}")
                 for na in new_artists:
                     if new_artists[na].name not in temp_artists.keys() and \
                             new_artists[na].name not in self.checked.keys() and \
-                            new_artists[na].name != self.term:
+                            new_artists[na].id != self.discogs_id:
                         temp_artists[new_artists[na].name] = new_artists[na]
                 self.artist_collection.update(set([x for x in new_artists.keys()]))
                 artist_count += 1
@@ -163,31 +169,33 @@ class Traverser:
 
             self.increase_count()
             print(f"Count: {self.count}")
-            if self.count > 65 or not temp_artists:
+            if self.count > MAX_STEPS or not temp_artists:
                 break
 
-            artists = [x.name for x in temp_artists]
+            artists = [x.discogs_id for x in temp_artists]
 
     def increase_count(self):
         self.count += 1
 
-    def get_artist_related(self, artist):
+    def get_artist_related(self, artist_discogs_id):
         fetcher = ArtistFetcher(
-            artist,
+            artist_discogs_id,
             self.client,
             db=self.db,
-            depth=self.depth,
+            steps=self.depth,
         )
-
         new_artists, new_artist = fetcher.run()
-        print(new_artist, '89898')
+
+        if not new_artist:
+            return None, None
+
         self.checked[new_artist.name] = new_artist
         print(f"Found new artists: {new_artists}")
         del fetcher
         return new_artists, new_artist
 
 
-def start_traversing(term: str, db: Session, depth: int = 10, max_artists: int = 20):
+def start_traversing(discogs_id: str, db: Session, depth: int = 10, max_artists: int = 20):
     discogs_client = DiscoConnector(
         key=settings.discogs_key,
         secret=settings.discogs_secret
@@ -195,7 +203,7 @@ def start_traversing(term: str, db: Session, depth: int = 10, max_artists: int =
     discogs_client.set_token(settings.token, settings.secret)
 
     traverser = Traverser(
-        term=term,
+        discogs_id=discogs_id,
         client=discogs_client,
         max_artists=max_artists,
         depth=depth,

@@ -46,6 +46,9 @@ class DiscoConnector:
             self.get_new_token()
             self.search(term, type)
 
+    def fetch_artist_by_discogs_id(self, discogs_id):
+        return self.client.artist(discogs_id)
+
     def set_token(self, token, secret):
         self.token = token
         self.secret = secret
@@ -60,6 +63,13 @@ class DiscoConnector:
             return self.prepare_artist_schema(artist)
         return artist
 
+    def search_artist(self, artist: str) -> Optional[Artist]:
+        results = self.search(artist, type="artist")
+        for result in results:
+            if result.name == artist:
+                return self.prepare_artist_schema(result)
+        return None
+
     @staticmethod
     def prepare_artist_schema(artist):
         artist_node = Artist(
@@ -70,19 +80,13 @@ class DiscoConnector:
 
         if artist.images and len(artist.images) > 0:
             artist_node.image_url = artist.images[0]['uri']
-
-        for rel in artist.releases:
+        for rel in artist.releases.page(0):
+            print('Found release: ', rel.title, ' ||| ', artist_node.name)
             release = Release(
                 title=rel.title,
                 discogs_id=rel.id,
-                page_url=rel.url
+                page_url=rel.url,
+                year=rel.year,
             )
             artist_node.releases.append(release)
         return artist_node
-
-    def search_artist(self, artist: str) -> Optional[Artist]:
-        results = self.search(artist, type="artist")
-        for result in results:
-            if result.name == artist:
-                return self.prepare_artist_schema(result)
-        return None

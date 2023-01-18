@@ -38,10 +38,15 @@ class CRUDItem(CRUDBase[Artist, ArtistCreate, ArtistUpdate]):
                 releases_db.append(db_rel)
 
         artist_in.releases = []
-        obj_in_data = jsonable_encoder(artist_in)
-        db_obj = self.model(**obj_in_data)
-        db_obj.releases.extend(releases_db)
-        db.add(db_obj)
+        db_obj = self.get_by_discogs_id(db=db, discogs_id=artist_in.discogs_id)
+        if db_obj:
+            db_obj.releases.extend(releases_db)
+            db.add(db_obj)
+        else:
+            obj_in_data = jsonable_encoder(artist_in)
+            db_obj = self.model(**obj_in_data)
+            db_obj.releases.extend(releases_db)
+            db.add(db_obj)
         db.commit()
         db.refresh(db_obj)
         return db_obj
