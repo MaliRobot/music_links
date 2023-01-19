@@ -61,13 +61,6 @@ class DiscoConnector:
         artist = self.client.artist(artist_id)
         if artist:
             return self.prepare_artist_schema(artist)
-        return artist
-
-    def search_artist(self, artist: str) -> Optional[Artist]:
-        results = self.search(artist, type="artist")
-        for result in results:
-            if result.name == artist:
-                return self.prepare_artist_schema(result)
         return None
 
     @staticmethod

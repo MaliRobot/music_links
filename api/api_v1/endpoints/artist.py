@@ -50,7 +50,7 @@ def insert_artist_manually(
         image_url="222",
         releases=[
             ReleaseCreate(
-                name="drugi",
+                title="drugi",
                 discogs_id="7373",
                 page_url="url",
                 artists=[]

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 class ReleaseBase(BaseModel):
     id: Optional[int] = None
-    name: Optional[str] = None
+    title: Optional[str] = None
     discogs_id: Optional[str] = None
     page_url: Optional[str] = None
     image_url: Optional[str] = None
@@ -12,9 +12,10 @@ class ReleaseBase(BaseModel):
 
 
 class ReleaseCreate(ReleaseBase):
-    name: str
+    title: str
     discogs_id: str
     page_url: str
+    year: str
 
     class Config:
         orm_mode = True

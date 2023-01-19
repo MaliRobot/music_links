@@ -29,7 +29,7 @@ class CRUDItem(CRUDBase[Artist, ArtistCreate, ArtistUpdate]):
 
     def create_with_releases(self, db: Session, artist_in: ArtistCreate):
         releases_db = []
-
+        print(artist_in.releases)
         for release in artist_in.releases:
             release.artists = []
             if not release_crud.get_by_discogs_id(db=db, discogs_id=release.discogs_id):
