@@ -1,15 +1,17 @@
-from typing import Any, List
+from typing import Any, List, Union
+from collections import OrderedDict
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from crud.artist import artist_crud
 from crud.release import release_crud
-from schemas.artist import ArtistCreate, ArtistDBListItem
+from schemas.artist import ArtistCreate, ArtistDBListItem, ArtistSearchResult
 from schemas.release import ReleaseCreate
 from api.dependencies import get_db
 
 from services.traverser import start_traversing
+from services.disco_ops import artist_sorted_search
 
 router = APIRouter()
 
@@ -25,15 +27,21 @@ def get_artist_by_name(
     artists = artist_crud.search_by_name(db=db, artist_name=artist_name)
     return artists
 
-
 @router.post("/")
 def fetch_artist(
-    discogs_id: str,
+    discogs_id: Union[str, None] = None,
+    name: Union[str, None] = None,
     db: Session = Depends(get_db)
 ) -> Any:
     """
     Retrieve artist by name.
     """
+    if name:
+        return artist_sorted_search(name)
+
+    if not discogs_id:
+        return {}
+
     start_traversing(discogs_id=discogs_id, db=db)
     return {'message': f'Fetching data for {discogs_id} artist'}
 
@@ -53,6 +61,7 @@ def insert_artist_manually(
                 title="drugi",
                 discogs_id="7373",
                 page_url="url",
+                year="1984",
                 artists=[]
             )
         ]

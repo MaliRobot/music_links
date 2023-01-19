@@ -1,20 +1,16 @@
-from typing import Dict, Set, List
+from typing import Set
 from dataclasses import dataclass, field
 import discogs_client
 import discogs_client.exceptions
 
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-
-from config.settings import settings
 
 from crud.artist import artist_crud
 from crud.release import release_crud
 from models.artist import Artist
-from models.release import Release
 from schemas.artist import ArtistCreate
 from schemas.release import ReleaseCreate
-from services.disco_fetch import DiscoConnector
+from services.disco_conn import DiscoConnector, init_disco_fetcher
 
 
 MAX_STEPS = 20
@@ -170,12 +166,7 @@ class Traverser:
 
 
 def start_traversing(discogs_id: str, db: Session, max_artists: int = 20):
-    discogs_client = DiscoConnector(
-        key=settings.discogs_key,
-        secret=settings.discogs_secret
-    )
-    discogs_client.set_token(settings.token, settings.secret)
-
+    discogs_client = init_disco_fetcher()
     traverser = Traverser(
         discogs_id=discogs_id,
         client=discogs_client,

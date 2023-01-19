@@ -32,3 +32,9 @@ class ArtistDBListItem(ArtistBase):
 
     class Config:
         orm_mode = True
+
+
+class ArtistSearchResult(BaseModel):
+    name: str
+    discogs_id: int
+    url: str

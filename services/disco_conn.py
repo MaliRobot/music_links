@@ -4,8 +4,7 @@ from dataclasses import dataclass
 import discogs_client
 from discogs_client.exceptions import HTTPError
 
-from models.artist import Artist
-from models.release import Release
+from config.settings import settings
 
 
 @dataclass
@@ -59,3 +58,12 @@ class DiscoConnector:
 
     def get_artist(self, artist_id):
         return self.client.artist(artist_id)
+
+
+def init_disco_fetcher():
+    discogs_conn = DiscoConnector(
+        key=settings.discogs_key,
+        secret=settings.discogs_secret
+    )
+    discogs_conn.set_token(settings.token, settings.secret)
+    return discogs_conn
