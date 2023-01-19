@@ -58,28 +58,4 @@ class DiscoConnector:
         return self.client.release(release_id)
 
     def get_artist(self, artist_id):
-        artist = self.client.artist(artist_id)
-        if artist:
-            return self.prepare_artist_schema(artist)
-        return None
-
-    @staticmethod
-    def prepare_artist_schema(artist):
-        artist_node = Artist(
-            name=artist.name,
-            discogs_id=artist.id,
-            page_url=artist.url,
-        )
-
-        if artist.images and len(artist.images) > 0:
-            artist_node.image_url = artist.images[0]['uri']
-        for rel in artist.releases.page(0):
-            print('Found release: ', rel.title, ' ||| ', artist_node.name)
-            release = Release(
-                title=rel.title,
-                discogs_id=rel.id,
-                page_url=rel.url,
-                year=rel.year,
-            )
-            artist_node.releases.append(release)
-        return artist_node
+        return self.client.artist(artist_id)

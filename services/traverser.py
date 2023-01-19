@@ -32,6 +32,8 @@ class StepTraverser:
         artist = artist_crud.get_by_discogs_id(self.db, self.discogs_id)
         if not artist:
             artist_discogs = self.client.fetch_artist_by_discogs_id(self.discogs_id)
+            if not artist_discogs:
+                return None
 
             artist_in = ArtistCreate(
                 name=artist_discogs.name,
@@ -53,23 +55,67 @@ class StepTraverser:
         self.artist = artist
         return self.artist
 
-    def check_artist_releases(self):
+    def get_artist_releases(self):
         if self.artist:
-            for release in self.artist.releases:
-                release_discogs = self.client.get_release(release_id=release.discogs_id)
-                try:
-                    for artist in release_discogs.artists:
-                        if artist.id != self.artist.discogs_id and artist.name != 'Various':
-                            self.artists.add(artist.id)
+            if 'page_url' in dir(self.artist):
+                artist = self.client.get_artist(artist_id=self.artist.discogs_id)
+                return artist.releases
+            return self.artist.releases
+        return []
 
-                    if 'extraartists' in dir(release_discogs):
-                        for ex_artist in release_discogs.extraartists:
-                            if ex_artist.id != self.artist.discogs_id and ex_artist.name != 'Various':
-                                self.artists.add(ex_artist.id)
-                except discogs_client.exceptions.HTTPError as e:
-                    print('err: ', str(e))
+    def check_artist_releases(self):
+        for release in self.get_artist_releases():
+            if 'main_release' in dir(release):
+                release = release.main_release
+            try:
+                for artist in release.artists:
+                    if artist.id != self.artist.discogs_id and artist.name != 'Various':
+                        self.artists.add(artist.id)
+                        self.add_release_to_artist(artist, release)
+                if 'extraartists' in dir(release):
+                    for ex_artist in release.extraartists:
+                        if ex_artist.id != self.artist.discogs_id and ex_artist.name != 'Various':
+                            self.artists.add(ex_artist.id)
+                            self.add_release_to_artist(ex_artist, release)
+                for artist in release.credits:
+                    if artist.id != self.artist.discogs_id and artist.name != 'Various':
+                        self.artists.add(artist.id)
+                        self.add_release_to_artist(artist, release)
+
+            except discogs_client.exceptions.HTTPError as e:
+                print('err: ', str(e))
+            except AttributeError:
+                print('master', dir(release), release.title)
+
         print(self.artists)
         return self.artists
+
+    def add_release_to_artist(self, artist, release_discogs):
+        release_in = ReleaseCreate(
+            title=release_discogs.title,
+            discogs_id=release_discogs.id,
+            page_url=release_discogs.url,
+            year=release_discogs.year,
+        )
+        db_artist = artist_crud.get_by_discogs_id(db=self.db, discogs_id=artist.id)
+        if db_artist:
+            release = release_crud.get_by_discogs_id(db=self.db, discogs_id=release_discogs.id)
+            if not release:
+                release = release_crud.create(db=self.db, obj_in=release_in)
+            artist_crud.add_artist_release(db=self.db, artist_id=db_artist.id,
+                                           release=release)
+        else:
+            artist_crud.create_with_releases(
+                db=self.db,
+                artist_in=ArtistCreate(
+                    name=artist.name,
+                    discogs_id=artist.id,
+                    page_url=artist.url,
+                    releases=[
+                        release_in
+                    ]
+                )
+            )
 
 
 @dataclass
@@ -97,6 +143,9 @@ class Traverser:
 
     def traverse_loop(self):
         while True:
+            if len(self.artists) == 0:
+                break
+
             artist = self.artists.pop()
             step = StepTraverser(
                 discogs_id=artist,
@@ -105,6 +154,9 @@ class Traverser:
             )
 
             artist = step.get_or_create_artist()
+            if not artist:
+                continue
+
             self.checked.add(artist)
             step.check_artist_releases()
             ids_to_check = step.artists

@@ -29,13 +29,12 @@ class CRUDItem(CRUDBase[Artist, ArtistCreate, ArtistUpdate]):
 
     def create_with_releases(self, db: Session, artist_in: ArtistCreate):
         releases_db = []
-        print(artist_in.releases)
         for release in artist_in.releases:
             release.artists = []
-            if not release_crud.get_by_discogs_id(db=db, discogs_id=release.discogs_id):
-                db_rel = release_crud.create(db=db, obj_in=release)
-                db_rel.artists = []
-                releases_db.append(db_rel)
+            db_release = release_crud.get_by_discogs_id(db=db, discogs_id=release.discogs_id)
+            if not db_release:
+                db_release = release_crud.create(db=db, obj_in=release)
+            releases_db.append(db_release)
 
         artist_in.releases = []
         db_obj = self.get_by_discogs_id(db=db, discogs_id=artist_in.discogs_id)
