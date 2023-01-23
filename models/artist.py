@@ -32,12 +32,30 @@ class Artist(Base):
     releases: Optional[List[Release]]
     limit: int = 10
 
-    def get_connected_artists(self):
-        visited = {self.discogs_id}
-        collected = []
+    def get_connected_artists(self, step: int = 0, collected=None, visited=None):
+        if step >= self.limit:
+            return collected, visited
+
+        step += 1
+
+        if collected is None:
+            collected = {step: set()}
+
+        if step not in collected.keys():
+            collected[step] = set()
+
+        if visited is None:
+            visited = {self.discogs_id}
+
+        visited.add(self.discogs_id)
+
         for release in self.releases:
             for artist in release.artists:
-                if artist.discogs_id not in visited:
-                    visited.add(artist.discogs_id)
-                    collected.append(artist)
-        return collected
+                if artist.discogs_id != self.discogs_id and artist.discogs_id not in visited:
+                    collected[step].add(artist)
+                    visited.add(artist)
+                    new_collected, new_visited = artist.get_connected_artists(step, collected, visited)
+                    visited.update(new_visited)
+                    collected.update(new_collected)
+
+        return collected, visited

@@ -22,43 +22,15 @@ def get_artist_links(
     db: Session = Depends(get_db)
 ):
     artist = artist_crud.get_by_discogs_id(db=db, discogs_id=artist_discogs_id)
-    visited = {artist.discogs_id}
-    collected = {}
-    step = 0
-    artists = get_more(artist)
-    collected[step] = set(artists)
 
-    while step < 10:
-        step += 1
-        print(step)
-        collected[step] = set()
-        new = []
-        for a in artists:
-            a_db = artist_crud.get_by_discogs_id(db=db, discogs_id=a.discogs_id)
-            new_artists = get_more(a_db)
-            if a.discogs_id not in visited:
-                visited.add(a_db.discogs_id)
-                new.extend(new_artists)
-        print(len(new))
-        artists = new
-        collected[step].update(set(new))
-
-    print('here')
-    for k in collected.keys():
-        for a in collected[k]:
-            print(k, a.name)
-    # return collected
-
-
-def get_more(artist):
-    visited = {artist.discogs_id}
-    collected = []
-    for release in artist.releases:
-        for artist in release.artists:
-            if artist.discogs_id not in visited:
-                visited.add(artist.discogs_id)
-                collected.append(artist)
-    return list(set(collected))
+    linked, _ = artist.get_connected_artists()
+    for l in linked.keys():
+        for a in linked[l]:
+            print(l, a.name)
+            if a.name == "The Thermals":
+                print('aaaaaaaaaa')
+                break
+    return 'done'
 
 @router.get("/search/{artist_name}", response_model=List[ArtistDBListItem])
 def get_artist_by_name(
