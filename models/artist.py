@@ -30,3 +30,14 @@ class Artist(Base):
     releases: List
     image_url: Optional[str]
     releases: Optional[List[Release]]
+    limit: int = 10
+
+    def get_connected_artists(self):
+        visited = {self.discogs_id}
+        collected = []
+        for release in self.releases:
+            for artist in release.artists:
+                if artist.discogs_id not in visited:
+                    visited.add(artist.discogs_id)
+                    collected.append(artist)
+        return collected

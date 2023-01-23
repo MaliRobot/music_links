@@ -26,9 +26,12 @@ class ArtistUpdate(ArtistBase):
     pass
 
 
-class ArtistDBListItem(ArtistBase):
+class ArtistDBListItem(BaseModel):
     id: int
     name: str
+    discogs_id: str
+    image_url: Optional[str]
+    page_url: str
 
     class Config:
         orm_mode = True
