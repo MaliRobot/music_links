@@ -26,11 +26,9 @@ def get_artist_links(
     linked, _ = artist.get_connected_artists()
     for l in linked.keys():
         for a in linked[l]:
-            print(l, a.name)
-            if a.name == "The Thermals":
-                print('aaaaaaaaaa')
-                break
+            print(f"{l}, {a.previous[1]} => {a.previous[0]} => {a.name}")
     return 'done'
+
 
 @router.get("/search/{artist_name}", response_model=List[ArtistDBListItem])
 def get_artist_by_name(
@@ -42,6 +40,7 @@ def get_artist_by_name(
     """
     artists = artist_crud.search_by_name(db=db, artist_name=artist_name)
     return artists
+
 
 @router.post("/")
 def fetch_artist(

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Tuple, Optional
 from dataclasses import dataclass
 
 from sqlalchemy import Column, Integer, String, ForeignKey, Table
@@ -30,6 +30,7 @@ class Artist(Base):
     releases: List
     image_url: Optional[str]
     releases: Optional[List[Release]]
+    previous: Tuple = None
     limit: int = 10
 
     def get_connected_artists(self, step: int = 0, collected=None, visited=None):
@@ -52,6 +53,7 @@ class Artist(Base):
         for release in self.releases:
             for artist in release.artists:
                 if artist.discogs_id != self.discogs_id and artist.discogs_id not in visited:
+                    artist.previous = (release.title, self.name)
                     collected[step].add(artist)
                     visited.add(artist)
                     new_collected, new_visited = artist.get_connected_artists(step, collected, visited)
