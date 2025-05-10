@@ -70,5 +70,5 @@ def init_disco_fetcher(oauth: bool = False):
         )
         return discogs_conn.client
 
-    discogs_conn = discogs_client.Client("MaliRobot/1.0", user_token="jBxVkTMkZIwMDhRMybSBtugUjsYXOAUwSpqgoWVb")
+    discogs_conn = discogs_client.Client("MaliRobot/1.0", user_token=settings.discogs_token)
     return discogs_conn

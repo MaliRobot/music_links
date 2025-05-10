@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     test_database_url: str = ''
     discogs_key: str = ''
     discogs_secret: str = ''
+    discogs_token: str = ''
     token_url: str = ''
     authorize_url: str = ''
     access_token_url: str = ''
