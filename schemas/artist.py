@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from schemas.release import ReleaseCreate
 
 
@@ -41,3 +41,4 @@ class ArtistSearchResult(BaseModel):
     name: str
     discogs_id: int
     url: str
+    similarity: Optional[float] = Field(default=None, exclude=True)

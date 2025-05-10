@@ -1,7 +1,7 @@
-from typing import Any, List, Union
+from typing import Any, List, Union, Optional
 from collections import OrderedDict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from crud.artist import artist_crud
@@ -18,8 +18,8 @@ router = APIRouter()
 
 @router.get("/links/{artist_name}")
 def get_artist_links(
-    artist_discogs_id: str,
-    db: Session = Depends(get_db)
+        artist_discogs_id: str,
+        db: Session = Depends(get_db)
 ):
     artist = artist_crud.get_by_discogs_id(db=db, discogs_id=artist_discogs_id)
     if artist is None:
@@ -33,8 +33,8 @@ def get_artist_links(
 
 @router.get("/search/{artist_name}", response_model=List[ArtistDBListItem])
 def get_artist_by_name(
-    artist_name: str,
-    db: Session = Depends(get_db)
+        artist_name: str,
+        db: Session = Depends(get_db)
 ):
     """
     Retrieve artist by name.
@@ -44,16 +44,29 @@ def get_artist_by_name(
 
 
 @router.post("/")
-def fetch_artist(
-    discogs_id: Union[str, None] = None,
-    name: Union[str, None] = None,
-    db: Session = Depends(get_db)
+async def fetch_artist(
+        discogs_id: Union[str, None] = None,
+        name: Union[str, None] = None,
+        page_limit: Optional[int] = Query(3, ge=1, le=10),
+        similarity_threshold: Optional[float] = Query(None, ge=0.0, le=1.0),
+        db: Session = Depends(get_db)
 ) -> Any:
     """
-    Retrieve artist by name.
+    Retrieve artist by name or fetch artist data by Discogs ID.
+
+    Parameters:
+    - name: Artist name to search for
+    - discogs_id: Discogs ID to fetch detailed data
+    - page_limit: Maximum number of pages to fetch (1-10, default: 3)
+    - similarity_threshold: Minimum similarity score (0.0-1.0) to include in results
     """
     if name:
-        return artist_sorted_search(name)
+        # Using our optimized version with pagination and threshold
+        return await artist_sorted_search(
+            name=name,
+            page_limit=page_limit,
+            similarity_threshold=similarity_threshold
+        )
 
     if not discogs_id:
         return {}
@@ -64,8 +77,8 @@ def fetch_artist(
 
 @router.post("/manual/")
 def insert_artist_manually(
-    # artist: schemas.artist.ArtistCreate,
-    db: Session = Depends(get_db)
+        # artist: schemas.artist.ArtistCreate,
+        db: Session = Depends(get_db)
 ):
     artist = ArtistCreate(
         name="meow",
