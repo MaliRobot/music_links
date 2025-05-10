@@ -23,6 +23,8 @@ class DiscoConnector:
             consumer_secret=secret
         )
 
+        self.get_new_token()
+
     def get_new_token(self):
         # TODO - what to do about this propmt?
         self.request_token, self.request_secret, self.auth_url = self.client.get_authorize_url()
@@ -60,10 +62,13 @@ class DiscoConnector:
         return self.client.artist(artist_id)
 
 
-def init_disco_fetcher():
-    discogs_conn = DiscoConnector(
-        key=settings.discogs_key,
-        secret=settings.discogs_secret
-    )
-    discogs_conn.set_token(settings.token, settings.secret)
+def init_disco_fetcher(oauth: bool = False):
+    if oauth:
+        discogs_conn = DiscoConnector(
+            key=settings.discogs_key,
+            secret=settings.discogs_secret
+        )
+        return discogs_conn.client
+
+    discogs_conn = discogs_client.Client("MaliRobot/1.0", user_token="jBxVkTMkZIwMDhRMybSBtugUjsYXOAUwSpqgoWVb")
     return discogs_conn

@@ -14,7 +14,7 @@ def artist_sorted_search(name: str) -> Dict[str, ArtistSearchResult]:
     artists = discogs_conn.search(term=name, type='artist')
     for i in range(artists.pages):
         for artist in artists.page(i):
-            if artist.id not in search_results.keys():
+            if artist.name not in search_results:
                 artist_result = ArtistSearchResult(
                     name=artist.name,
                     discogs_id=artist.id,

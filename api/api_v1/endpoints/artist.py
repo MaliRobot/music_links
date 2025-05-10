@@ -22,7 +22,8 @@ def get_artist_links(
     db: Session = Depends(get_db)
 ):
     artist = artist_crud.get_by_discogs_id(db=db, discogs_id=artist_discogs_id)
-
+    if artist is None:
+        return 'failed to find artist'
     linked, _ = artist.get_connected_artists()
     for l in linked.keys():
         for a in linked[l]:
