@@ -7,6 +7,8 @@ from schemas.artist import ArtistSearchResult
 from services.disco_conn import get_disco_connection
 from utils.strings import string_similarity_ratio
 
+semaphore = asyncio.Semaphore(5)
+
 
 def _fetch_page_sync(disco_conn, name: str, page_number: int) -> List[Tuple[str, int, str]]:
     """
@@ -17,11 +19,12 @@ def _fetch_page_sync(disco_conn, name: str, page_number: int) -> List[Tuple[str,
     return [(artist.name, artist.id, artist.url) for artist in artists_page]
 
 
-async def fetch_page_threaded(disco_conn, name: str, page_number: int):
+async def _fetch_page_threaded(disco_conn, name: str, page_number: int):
     """
     Run fetch in a threadpool.
     """
-    return await run_in_threadpool(_fetch_page_sync, disco_conn, name, page_number)
+    async with semaphore:
+        return await run_in_threadpool(_fetch_page_sync, disco_conn, name, page_number)
 
 
 async def artist_search(name: str, page_limit: int):
@@ -34,7 +37,7 @@ async def artist_search(name: str, page_limit: int):
     max_pages = min(initial_result.pages, page_limit)
 
     tasks = [
-        fetch_page_threaded(disco_conn, name, page_number)
+        _fetch_page_threaded(disco_conn, name, page_number)
         for page_number in range(1, max_pages + 1)
     ]
     page_results = await asyncio.gather(*tasks)
