@@ -45,7 +45,7 @@ class DiscoConnector:
             self.get_new_token()
 
     def get_new_token(self):
-        # TODO - what to do about this propmt?
+        # TODO - what to do about this prompt?
         if not self.uses_oauth:
             raise RuntimeError("Using user token auth! No token needed!")
 
