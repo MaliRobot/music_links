@@ -31,7 +31,7 @@ from services.disco_conn import DiscoConnector, init_disco_fetcher
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
@@ -359,7 +359,6 @@ class StepTraverser:
             )
             
             # Check if artist exists in database
-            print(artist.id, "->", artist.name, "->", release_discogs.title)
             db_artist = artist_crud.get_by_discogs_id(db=self.db, discogs_id=artist.id)
             
             if db_artist:
