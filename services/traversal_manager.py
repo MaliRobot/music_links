@@ -12,9 +12,9 @@ from contextlib import contextmanager
 
 from sqlalchemy.orm import Session
 
-from api_client import DiscogsAPIClient
-from artist_processor import ArtistProcessor
-from release_processor import ReleaseProcessor
+from services.api_client import DiscogsAPIClient
+from services.artist_processor import ArtistProcessor
+from services.release_processor import ReleaseProcessor
 
 logger = logging.getLogger(__name__)
 
