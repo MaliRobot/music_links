@@ -1,7 +1,8 @@
 """
-Traversal manager module.
+Traversal manager module - FIXED VERSION.
 
 This module manages the overall traversal process and coordinates between components.
+Now properly respects the max_artists limit by checking it during artist extraction.
 """
 
 import logging
@@ -29,20 +30,20 @@ class TraversalStatistics:
     errors: int = 0
     start_time: float = field(default_factory=time.time)
     end_time: Optional[float] = None
-    
+
     @property
     def elapsed_time(self) -> float:
         """Get elapsed time in seconds."""
         end = self.end_time or time.time()
         return end - self.start_time
-    
+
     @property
     def average_time_per_artist(self) -> float:
         """Get average time per artist in seconds."""
         if self.artists_processed == 0:
             return 0.0
         return self.elapsed_time / self.artists_processed
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert statistics to dictionary."""
         return {
@@ -67,22 +68,22 @@ class TraversalConfig:
 
 class TraversalQueue:
     """Manages the queue of artists to process."""
-    
+
     def __init__(self, max_size: Optional[int] = None):
         """
         Initialize the queue.
-        
+
         Args:
             max_size: Optional maximum queue size to prevent unbounded growth
         """
         self.pending: Set[str] = set()
         self.checked: Set[str] = set()
         self.max_size = max_size
-        
+
     def add(self, artist_id: str) -> bool:
         """
         Add an artist to the queue if not already checked and queue has space.
-        
+
         Returns:
             True if added, False if already checked or queue is full
         """
@@ -93,31 +94,44 @@ class TraversalQueue:
             else:
                 logger.debug(f"Queue is full (max_size={self.max_size}), not adding artist {artist_id}")
         return False
-    
-    def add_multiple(self, artist_ids: Set[str]) -> int:
+
+    def add_multiple(self, artist_ids: Set[str], max_total_artists: Optional[int] = None) -> int:
         """
-        Add multiple artists to the queue.
-        
+        Add multiple artists to the queue, respecting total artist limit.
+
+        Args:
+            artist_ids: Set of artist IDs to add
+            max_total_artists: If provided, limit the total number of artists (checked + pending)
+
         Returns:
             Number of artists actually added
         """
         new_artists = artist_ids - self.checked
-        
+
+        # Apply total artist limit if specified
+        if max_total_artists is not None:
+            # Total artists is checked + pending
+            current_total = len(self.checked) + len(self.pending)
+            available_for_total = max(0, max_total_artists - current_total)
+            if available_for_total < len(new_artists):
+                logger.debug(f"Total artist limit restricts additions to {available_for_total} of {len(new_artists)} artists")
+                new_artists = set(list(new_artists)[:available_for_total])
+
+        # Also apply queue size limit
         if self.max_size is not None:
-            # Limit additions to available space
             available_space = max(0, self.max_size - len(self.pending))
             if available_space < len(new_artists):
                 logger.debug(f"Queue near capacity, adding only {available_space} of {len(new_artists)} artists")
                 new_artists = set(list(new_artists)[:available_space])
-        
+
         before_size = len(self.pending)
         self.pending.update(new_artists)
         return len(self.pending) - before_size
-    
+
     def get_next(self) -> Optional[str]:
         """
         Get next artist to process.
-        
+
         Returns:
             Artist ID or None if queue is empty
         """
@@ -126,26 +140,31 @@ class TraversalQueue:
             self.checked.add(artist_id)
             return artist_id
         return None
-    
+
     def mark_checked(self, artist_id: str):
         """Mark an artist as checked."""
         self.checked.add(artist_id)
         self.pending.discard(artist_id)
-    
+
     @property
     def size(self) -> int:
         """Get number of pending artists."""
         return len(self.pending)
-    
+
     @property
     def total_checked(self) -> int:
         """Get total number of checked artists."""
         return len(self.checked)
 
+    @property
+    def total_artists(self) -> int:
+        """Get total number of artists (checked + pending)."""
+        return len(self.checked) + len(self.pending)
+
 
 class SingleArtistTraverser:
     """Handles traversal for a single artist."""
-    
+
     def __init__(
         self,
         artist_processor: ArtistProcessor,
@@ -155,7 +174,7 @@ class SingleArtistTraverser:
     ):
         """
         Initialize single artist traverser.
-        
+
         Args:
             artist_processor: Processor for artist data
             release_processor: Processor for release data
@@ -166,96 +185,133 @@ class SingleArtistTraverser:
         self.release_processor = release_processor
         self.api_client = api_client
         self.config = config
-        
-    def process_artist(self, discogs_id: str) -> Set[str]:
+
+    def process_artist(self, discogs_id: str, max_new_artists: Optional[int] = None) -> Set[str]:
         """
         Process a single artist and return related artist IDs.
-        
+
         Args:
             discogs_id: Discogs ID of the artist to process
-            
+            max_new_artists: Maximum number of new artists to extract (None for unlimited)
+
         Returns:
             Set of related artist IDs found
         """
         logger.info(f"Processing artist with ID: {discogs_id}")
         related_artists = set()
-        
+
         # Get or create artist
         artist = self.artist_processor.get_or_create_artist(discogs_id)
         if not artist:
             logger.warning(f"Could not process artist ID: {discogs_id}")
             return related_artists
-        
+
         # Fetch and process releases
         releases = self.artist_processor.fetch_artist_releases(artist.discogs_id)
         if not releases:
             logger.warning(f"No releases found for artist: {artist.name}")
             return related_artists
-        
-        # Extract related artists from releases
-        related_artists = self._process_releases(releases, artist.discogs_id)
+
+        # Extract related artists from releases with limit
+        related_artists = self._process_releases(releases, artist.discogs_id, max_new_artists)
         logger.info(f"Found {len(related_artists)} related artists for {artist.name}")
-        
+
         return related_artists
-    
-    def _process_releases(self, releases: Any, current_artist_id: str) -> Set[str]:
+
+    def _process_releases(self, releases: Any, current_artist_id: str, max_new_artists: Optional[int] = None) -> Set[str]:
         """
-        Process releases and extract related artists.
-        
+        Process releases and extract related artists, respecting the max_new_artists limit.
+
         Args:
             releases: Releases collection from API
             current_artist_id: ID of the current artist
-            
+            max_new_artists: Maximum number of new artists to extract (None for unlimited)
+
         Returns:
             Set of related artist IDs
         """
         all_artists = set()
-        
+
         # Handle pagination
         if hasattr(releases, 'pages'):
             total_pages = releases.pages
             logger.info(f"Processing {total_pages} pages of releases")
-            
+
             for page_num in range(1, total_pages + 1):
+                # Check if we've reached the limit
+                if max_new_artists is not None and len(all_artists) >= max_new_artists:
+                    logger.info(f"Reached max_new_artists limit ({max_new_artists}), stopping release processing")
+                    break
+
                 logger.debug(f"Processing release page {page_num}/{total_pages}")
-                
+
                 try:
                     page = releases.page(page_num)
                     for release in page:
+                        # Check limit before processing each release
+                        if max_new_artists is not None and len(all_artists) >= max_new_artists:
+                            logger.info(f"Reached max_new_artists limit ({max_new_artists}), stopping release processing")
+                            break
+
                         artists = self.release_processor.extract_artists_from_release(
                             release,
                             current_artist_id,
                             include_extras=self.config.include_extra_artists,
                             include_credits=self.config.include_credits
                         )
+
+                        # If we have a limit, only add as many artists as we have room for
+                        if max_new_artists is not None:
+                            remaining_capacity = max_new_artists - len(all_artists)
+                            if remaining_capacity <= 0:
+                                break
+                            if len(artists) > remaining_capacity:
+                                # Only take as many as we have room for
+                                artists = set(list(artists)[:remaining_capacity])
+
                         all_artists.update(artists)
-                        
+
                         # Also save releases to artists in database
                         self._save_release_to_artists(release, artists)
-                        
+
                 except Exception as e:
                     logger.error(f"Error processing release page {page_num}: {e}")
         else:
             # Non-paginated releases
             logger.info("Processing non-paginated releases")
             for release in releases:
+                # Check limit before processing each release
+                if max_new_artists is not None and len(all_artists) >= max_new_artists:
+                    logger.info(f"Reached max_new_artists limit ({max_new_artists}), stopping release processing")
+                    break
+
                 artists = self.release_processor.extract_artists_from_release(
                     release,
                     current_artist_id,
                     include_extras=self.config.include_extra_artists,
                     include_credits=self.config.include_credits
                 )
+
+                # If we have a limit, only add as many artists as we have room for
+                if max_new_artists is not None:
+                    remaining_capacity = max_new_artists - len(all_artists)
+                    if remaining_capacity <= 0:
+                        break
+                    if len(artists) > remaining_capacity:
+                        # Only take as many as we have room for
+                        artists = set(list(artists)[:remaining_capacity])
+
                 all_artists.update(artists)
-                
+
                 # Also save releases to artists in database
                 self._save_release_to_artists(release, artists)
-        
+
         return all_artists
-    
+
     def _save_release_to_artists(self, release: Any, artist_ids: Set[str]):
         """
         Save release to artists in the database.
-        
+
         Args:
             release: Release data from API
             artist_ids: Set of artist IDs to save the release to
@@ -272,7 +328,7 @@ class SingleArtistTraverser:
 
 class TraversalManager:
     """Manages the overall traversal process."""
-    
+
     def __init__(
         self,
         db: Session,
@@ -281,7 +337,7 @@ class TraversalManager:
     ):
         """
         Initialize traversal manager.
-        
+
         Args:
             db: Database session
             api_client: API client
@@ -290,11 +346,11 @@ class TraversalManager:
         self.db = db
         self.api_client = api_client
         self.config = config or TraversalConfig()
-        
+
         # Initialize processors
         self.artist_processor = ArtistProcessor(db, api_client)
         self.release_processor = ReleaseProcessor(db)
-        
+
         # Initialize traverser
         self.single_traverser = SingleArtistTraverser(
             self.artist_processor,
@@ -302,23 +358,21 @@ class TraversalManager:
             api_client,
             self.config
         )
-        
+
         # Initialize queue and statistics
-        # Set queue max size to be 2x max_artists to allow some buffer but prevent unbounded growth
-        queue_max_size = self.config.max_artists * 2
-        self.queue = TraversalQueue(max_size=queue_max_size)
+        # Set queue max size to be equal to max_artists to prevent adding more than we'll process
+        self.queue = TraversalQueue(max_size=self.config.max_artists)
         self.statistics = TraversalStatistics()
-        
-        logger.info(f"Initialized TraversalManager with config: max_artists={self.config.max_artists}, "
-                   f"queue_max_size={queue_max_size}")
-    
+
+        logger.info(f"Initialized TraversalManager with config: max_artists={self.config.max_artists}")
+
     def traverse(self, starting_artist_id: str) -> TraversalStatistics:
         """
         Start traversal from a given artist.
-        
+
         Args:
             starting_artist_id: Discogs ID of the starting artist
-            
+
         Returns:
             Traversal statistics
         """
@@ -326,103 +380,98 @@ class TraversalManager:
         logger.info(f"Starting traversal from artist ID: {starting_artist_id}")
         logger.info(f"Configuration: max_artists={self.config.max_artists}")
         logger.info("=" * 80)
-        
+
         # Check if we should process the initial artist
         if self.statistics.artists_processed >= self.config.max_artists:
             logger.warning(f"Already at max_artists limit ({self.config.max_artists})")
             return self.statistics
-        
+
         # Process initial artist
-        related_artists = self.single_traverser.process_artist(starting_artist_id)
+        # Calculate how many new artists we can accept
+        remaining_capacity = self.config.max_artists - self.statistics.artists_processed - 1  # -1 for the current artist
+
+        related_artists = self.single_traverser.process_artist(starting_artist_id, max_new_artists=remaining_capacity)
         self.queue.mark_checked(starting_artist_id)
         self.statistics.artists_processed += 1
-        
-        # Only add new artists if we haven't reached the limit
+
+        # Add related artists, respecting the max_artists limit
         if self.statistics.artists_processed < self.config.max_artists:
-            # Calculate how many more we can process
-            remaining_capacity = self.config.max_artists - self.statistics.artists_processed
-            
-            # Add only as many artists as we have capacity for
-            artists_to_add = set(list(related_artists)[:remaining_capacity])
-            added = self.queue.add_multiple(artists_to_add)
-            
+            added = self.queue.add_multiple(related_artists, max_total_artists=self.config.max_artists)
+
             logger.info(f"Initial artist processed. Found {len(related_artists)} related artists, "
-                       f"added {added} to queue (capacity: {remaining_capacity})")
+                       f"added {added} to queue (total capacity: {self.config.max_artists})")
         else:
             logger.info(f"Initial artist processed. Reached max_artists limit, not adding related artists")
-        
+
         # Main traversal loop
         self._traverse_loop()
-        
+
         # Finalize statistics
         self.statistics.end_time = time.time()
         self.statistics.artists_checked = self.queue.total_checked
         self.statistics.api_requests = self.api_client.request_count
-        
+
         # Log final summary
         self._log_summary()
-        
+
         return self.statistics
-    
+
     def _traverse_loop(self):
         """Main traversal loop."""
         logger.info(f"Starting traversal loop with {self.queue.size} artists to process")
-        
+
         while self.queue.size > 0 and self.statistics.artists_processed < self.config.max_artists:
             # Get next artist
             artist_id = self.queue.get_next()
             if not artist_id:
                 break
-            
+
             self.statistics.artists_processed += 1
-            
+
             # Log progress
             if self.statistics.artists_processed % self.config.log_progress_interval == 0:
                 self._log_progress()
-            
+
             try:
-                # Process artist
-                related_artists = self.single_traverser.process_artist(artist_id)
-                
-                # Only add new artists if we haven't reached the limit
+                # Calculate how many new artists we can accept
+                # This is the key fix: we pass a limit to process_artist to prevent extracting too many artists
+                total_artists_so_far = self.statistics.artists_processed + self.queue.size
+                remaining_capacity = max(0, self.config.max_artists - total_artists_so_far)
+
+                # Process artist with the limit on new artists
+                related_artists = self.single_traverser.process_artist(artist_id, max_new_artists=remaining_capacity)
+
+                # Add new artists with limit check
                 if self.statistics.artists_processed < self.config.max_artists:
-                    # Calculate how many more we can process
-                    remaining_capacity = self.config.max_artists - self.statistics.artists_processed
-                    
-                    # Only add as many artists as we have capacity for
-                    if remaining_capacity > 0:
-                        # Convert to list to slice, then back to set
-                        artists_to_add = set(list(related_artists)[:remaining_capacity])
-                        added = self.queue.add_multiple(artists_to_add)
-                        
-                        logger.info(f"Processed artist {artist_id}. Found {len(related_artists)} related artists, "
-                                   f"added {added} to queue (remaining capacity: {remaining_capacity})")
-                    else:
-                        logger.info(f"Processed artist {artist_id}. At capacity, not adding {len(related_artists)} related artists")
+                    added = self.queue.add_multiple(related_artists, max_total_artists=self.config.max_artists)
+
+                    logger.info(f"Processed artist {artist_id}. Found {len(related_artists)} related artists, "
+                               f"added {added} to queue (remaining capacity: {remaining_capacity})")
                 else:
                     logger.info(f"Processed artist {artist_id}. Reached max_artists limit, not adding related artists")
-                
+
             except Exception as e:
                 self.statistics.errors += 1
                 logger.error(f"Error processing artist {artist_id}: {e}")
                 continue
-        
+
         # Log reason for stopping
         if self.statistics.artists_processed >= self.config.max_artists:
             logger.info(f"Traversal stopped: reached maximum of {self.config.max_artists} artists")
         elif self.queue.size == 0:
             logger.info("Traversal complete: no more artists to process")
-    
+
     def _log_progress(self):
         """Log current progress."""
         progress_pct = (self.statistics.artists_processed / self.config.max_artists) * 100
-        
+
         logger.info(
             f"\n--- Progress Update ---\n"
             f"Artists processed: {self.statistics.artists_processed}/{self.config.max_artists} "
             f"({progress_pct:.1f}%)\n"
             f"Queue size: {self.queue.size}\n"
             f"Total checked: {self.queue.total_checked}\n"
+            f"Total artists (checked + queued): {self.queue.total_artists}\n"
             f"API requests: {self.api_client.request_count}\n"
             f"Elapsed time: {self.statistics.elapsed_time:.1f}s\n"
             f"Average time per artist: {self.statistics.average_time_per_artist:.1f}s\n"
