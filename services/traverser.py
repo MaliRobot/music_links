@@ -168,7 +168,6 @@ class AsyncStepTraverser:
         print(releases, 'releases')
         tasks = [fetch_release(r) for r in releases]
         print(tasks, 'tasks')
-        tasks = tasks[:4]
         # results = await asyncio.gather(*tasks, return_exceptions=True)
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
