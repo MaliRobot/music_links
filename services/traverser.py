@@ -303,9 +303,9 @@ if __name__ == "__main__":
     try:
         # Run traversal with queue-based architecture
         stats = start_queue_based_traversal(
-            discogs_id="2419506",  # Example artist ID
+            discogs_id="88637",  # Example artist ID
             db=db,
-            max_artists=10,
+            max_artists=50,
             include_extra_artists=True,
             include_credits=True,
             log_level="INFO",

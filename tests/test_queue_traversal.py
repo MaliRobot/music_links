@@ -9,9 +9,7 @@ This script demonstrates the improvements in the refactored traversal system:
 """
 
 import logging
-import sys
-from typing import Dict, Any
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 import time
 
 # Mock the database and API components for testing

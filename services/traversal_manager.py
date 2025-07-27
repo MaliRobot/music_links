@@ -173,11 +173,9 @@ class SmartTraversalQueue:
         if self.max_size and len(self._queue) >= self.max_size:
             logger.warning(f"Queue size limit ({self.max_size}) reached")
             return False
-        
+        print(len(self._queue))
         # Add based on strategy
-        if self.strategy == QueueStrategy.BFS:
-            self._queue.append(item)
-        elif self.strategy == QueueStrategy.DFS:
+        if self.strategy == QueueStrategy.BFS or self.strategy == QueueStrategy.DFS:
             self._queue.append(item)
         else:  # Priority queue
             import heapq
