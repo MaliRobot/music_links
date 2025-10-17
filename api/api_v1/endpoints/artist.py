@@ -10,7 +10,7 @@ from schemas.artist import ArtistCreate, ArtistDBListItem, ArtistSearchResult
 from schemas.release import ReleaseCreate
 from api.dependencies import get_db
 
-from services.traverser import start_traversing_async
+from services.traverser import Traverser
 from services.disco_ops import artist_sorted_search
 
 router = APIRouter()
@@ -70,8 +70,8 @@ async def fetch_artist(
 
     if not discogs_id:
         return {}
-
-    await start_traversing_async(discogs_id=discogs_id, db=db)
+    traverser = Traverser(discogs_id=discogs_id, db=db)
+    traverser.begin_traverse()
     return {'message': f'Fetching data for {discogs_id} artist'}
 
 

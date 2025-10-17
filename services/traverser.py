@@ -257,9 +257,9 @@ class Traverser:
     def __init__(
         self,
         discogs_id: str,
-        client,
         db: Session,
         checked=None,
+        client=None,
         count: int = 0,
         max_artists: int = 100,
         artists=None
